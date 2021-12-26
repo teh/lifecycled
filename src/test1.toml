@@ -1,0 +1,23 @@
+[lifecycle.varlogs_compress]
+root = "/var/log/nginx/"
+match = "*.log"
+condition = "modified > 1d"
+run = ["zstd $$", "rm $$"]
+
+[lifecycle.varlogs_upload]
+root = "/var/log/nginx/"
+match = "*.log"
+condition = "modified > 10d"
+run = ["s3 cp $$ s3://backups/", "rm $$"]
+
+[lifecycle.eod_logs]
+root = "/var/log/important/"
+match = "*.log"
+condition = "modified > 1h"
+run = ["s3 cp $$ s3://backups/"]
+
+[lifecycle.eod_logs_cleanup]
+root = "/var/log/important/"
+match = "*.log"
+condition = "modified > 20d"
+run = ["rm $$"]

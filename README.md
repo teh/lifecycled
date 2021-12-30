@@ -4,6 +4,7 @@
 * arbitrary commands like compression
 * ctime or regex + strptime to detect age
 * dry-run with --asof time to simulate what would happen
+* allow sth like "?ctime+7d" relative to ctime?
 
 # out of scope
 

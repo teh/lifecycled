@@ -2,6 +2,8 @@ use std::borrow::BorrowMut;
 use std::os::unix::prelude::OsStrExt;
 use std::path::PathBuf;
 
+use anyhow::Result;
+
 #[derive(Debug)]
 enum PatternPart {
     Regex(regex::bytes::Regex),
@@ -14,8 +16,9 @@ pub struct Pattern {
     raw: PathBuf,
 }
 
+#[derive(Debug)]
 pub struct Match {
-    pub timestamp: chrono::DateTime<chrono::Utc>,
+    pub timestamp: chrono::NaiveDateTime,
     pub path: PathBuf,
 }
 
@@ -58,6 +61,9 @@ fn regex_from_part(s: &[u8]) -> anyhow::Result<PatternPart> {
         } else {
             match *x {
                 b'*' => local.append_pattern(b".*?"),
+                // TODO(tom): it's kind of bad that the following "." makes a potentially plain path
+                // a pattern path which enumerates all files in a directory.
+                // I'm not sure the indirection through the regex library buys us that much.
                 b'.' => local.append_pattern(b"\\."),
                 _ => local.append_raw(*x),
             }
@@ -145,23 +151,39 @@ impl Pattern {
                 };
                 Ok(())
             }
+
+            fn as_datetime(&self) -> anyhow::Result<chrono::NaiveDateTime> {
+                Ok(chrono::NaiveDate::from_ymd(
+                    self.year.ok_or_else(|| anyhow::Error::msg("year always needed"))? as i32,
+                    self.month.ok_or_else(|| anyhow::Error::msg("month always needed"))? as u32,
+                    self.day.ok_or_else(|| anyhow::Error::msg("day always needed"))? as u32,
+                )
+                .and_hms(
+                    self.hour.unwrap_or(0) as u32,
+                    self.minute.unwrap_or(0) as u32,
+                    self.second.unwrap_or(0) as u32,
+                ))
+            }
         }
 
         let mut stack: Vec<(PartialTimeMatch, PathBuf)> = vec![(Default::default(), PathBuf::from("/"))];
 
-        fn single(part: &regex::bytes::Regex, x: &(PartialTimeMatch, PathBuf)) -> Vec<(PartialTimeMatch, PathBuf)> {
+        fn process_part(
+            part: &regex::bytes::Regex,
+            x: &(PartialTimeMatch, PathBuf),
+        ) -> Vec<(PartialTimeMatch, PathBuf)> {
             let mut out = vec![];
             match std::fs::read_dir(&x.1) {
                 Ok(dirents) => {
                     for ent in dirents {
                         let mut x = x.clone();
                         let name = ent.unwrap().file_name();
+
                         if part.is_match(name.as_bytes()) {
-                            for cap in part.captures_iter(name.as_bytes()) {
-                                if x.0.update(&cap).is_err() {
-                                    // TODO log warning
-                                    return vec![];
-                                };
+                            if x.0.update(&part.captures(name.as_bytes()).unwrap()).is_err() {
+                                // todo better warning
+                                println!("inconsistent date");
+                                continue;
                             }
                             x.1.push(name);
                             out.push(x);
@@ -179,7 +201,7 @@ impl Pattern {
         for part in &self.parts {
             match part {
                 PatternPart::Regex(part) => {
-                    stack = stack.iter().flat_map(|x| single(part, x)).collect();
+                    stack = stack.iter().flat_map(|x| process_part(part, x)).collect();
                 }
                 PatternPart::Plain(part) => {
                     stack = stack
@@ -193,8 +215,14 @@ impl Pattern {
                 }
             }
         }
-        println!("{:#?}", stack);
-        Ok(vec![])
+
+        Ok(stack
+            .into_iter()
+            .map(|(ts, path)| Match {
+                timestamp: ts.as_datetime().unwrap(),
+                path,
+            })
+            .collect())
     }
 }
 
@@ -218,6 +246,22 @@ mod tests {
 
         let p = super::Pattern::from_path(&test.path().join("*.%Y-%m-%d.log"))?;
         let m = p.matches();
+        println!("{:#?}", m);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_inconsistent() -> anyhow::Result<()> {
+        let test = tempdir::TempDir::new("test")?;
+        std::fs::create_dir(test.path().join("2021"))?;
+        std::fs::File::create(test.path().join("2021/2021-12-24.log"))?;
+        // mismatch between dir and filename (will be ignored)
+        std::fs::File::create(test.path().join("2021/2022-12-24.log"))?;
+
+        let p = super::Pattern::from_path(&test.path().join("%Y/%Y-%m-%d.log"))?;
+        let m = p.matches();
+        println!("{:#?}", m);
 
         Ok(())
     }

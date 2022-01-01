@@ -9,18 +9,25 @@ pub mod matching;
 
 #[derive(Debug, Deserialize)]
 struct Rule {
-    #[serde(rename = "match")]
-    path_match: String,
+    #[serde(rename = "match", deserialize_with = "deserialize_pattern")]
+    path_match: matching::Pattern,
     #[serde(deserialize_with = "deserialize_duration")]
     after: std::time::Duration,
     run: Vec<String>,
 }
 
-pub fn deserialize_duration<'de, D>(d: D) -> Result<std::time::Duration, D::Error>
+fn deserialize_duration<'de, D>(d: D) -> Result<std::time::Duration, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
     parse_duration::parse(&String::deserialize(d)?).map_err(serde::de::Error::custom)
+}
+
+fn deserialize_pattern<'de, D>(d: D) -> Result<matching::Pattern, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    matching::Pattern::from_path(Path::new(&String::deserialize(d)?)).map_err(serde::de::Error::custom)
 }
 
 #[derive(Debug, Deserialize)]

@@ -16,6 +16,8 @@ run = ["zstd --rm ${LIFECYCLED_PATH}", "aws s3 cp ${LIFECYCLED_PATH} s3://backup
 
 Commands in the `run` list are executed via bash, with the `LIFECYCLED_PATH` environment variable pointing to the matching path. See `./examples` for the config examples.
 
+`match` can use `*` for a simple glob, but not `**` or `[]`, `{a,b}` or anything fancy like that yet.
+
 # Buyer Beware!
 
 * Running glob expressions unsupervised is dangerous - only use lifecycled if you know what you are doing
@@ -29,3 +31,4 @@ Commands in the `run` list are executed via bash, with the `LIFECYCLED_PATH` env
 * forking with new effective user ID per rule to avoid runnig as root
 * ctime/mtime support
 * `duration` as a matching parameter so we can run e.g. `ctime + 7 days`
+* more fancy glob matching

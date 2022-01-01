@@ -87,6 +87,19 @@ fn main() {
         match step(&config, chrono::Utc::now().naive_utc()) {
             Ok(applications) => {
                 log::debug!("Evaluation returned {} steps: {:?}", applications.len(), applications);
+                for x in applications {
+                    for cmd in x.commands {
+                        match std::process::Command::new("bash")
+                            .env("LIFECYCLED_PATH", x.path.as_os_str())
+                            .arg("-c")
+                            .arg(&cmd)
+                            .spawn()
+                        {
+                            Ok(ref mut process) => {process.wait();},
+                            Err(err) => log::warn!("Command error {}: {:?}", cmd, err),
+                        }
+                    }
+                }
             }
             Err(err) => log::warn!("Evaluation error: {:?}", err),
         }

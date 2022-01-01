@@ -1,8 +1,5 @@
-use std::borrow::BorrowMut;
 use std::os::unix::prelude::OsStrExt;
 use std::path::PathBuf;
-
-use anyhow::Result;
 
 #[derive(Debug)]
 enum PatternPart {

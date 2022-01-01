@@ -1,9 +1,9 @@
 [rules.compress_ship]
 match = "/var/log/nginx/rotated.%Y-%m-%d.log"
 after = "2d"
-run = ["zstd --rm $$", "aws s3 cp $$ s3://backup-bucket/$(basename $$)"]
+run = ["zstd --rm ${LIFECYCLED_PATH}", "aws s3 cp $$ s3://backup-bucket/$(basename ${LIFECYCLED_PATH})"]
 
 [rules.gc]
 match = "/var/log/nginx/rotated.%Y-%m-%d.log.zst"
 after = "7d"
-run = ["rm $$"]
+run = ["rm ${LIFECYCLED_PATH}"]

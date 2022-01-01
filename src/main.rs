@@ -1,7 +1,16 @@
-use std::{ops::Add, path::Path};
+use std::path::Path;
 
 use anyhow::Result;
+use argh::FromArgs;
 use serde::Deserialize;
+
+#[derive(argh::FromArgs)]
+/// lifecycled - life cycle daemon
+struct Args {
+    /// path to config file in TOML format
+    #[argh(option)]
+    config: std::path::PathBuf,
+}
 
 pub mod matching;
 
@@ -40,6 +49,7 @@ fn from_path(file_path: &Path) -> Result<Config> {
     Ok(config)
 }
 
+#[derive(Debug)]
 struct RuleApplication {
     path: std::path::PathBuf,
     commands: Vec<String>,
@@ -67,12 +77,21 @@ fn step(config: &Config, now: chrono::NaiveDateTime) -> anyhow::Result<Vec<RuleA
     Ok(out)
 }
 
-fn main() -> std::io::Result<()> {
+fn main() {
     env_logger::init();
-
-    let config = from_path(Path::new("./examples/log_files.toml")).unwrap();
-    println!("config: {:#?}", config);
-    Ok(())
+    let args: Args = argh::from_env();
+    let config = from_path(&args.config).unwrap();
+    log::debug!("Config: {:?}", config);
+    loop {
+        // evaluate once a minute, should be enough
+        match step(&config, chrono::Utc::now().naive_utc()) {
+            Ok(applications) => {
+                log::debug!("Evaluation returned {} steps: {:?}", applications.len(), applications);
+            }
+            Err(err) => log::warn!("Evaluation error: {:?}", err),
+        }
+        std::thread::sleep(std::time::Duration::from_secs(60));
+    }
 }
 
 #[cfg(test)]
@@ -100,6 +119,8 @@ mod tests {
 
         let applications = step(&config, chrono::NaiveDate::from_ymd(2020, 11, 14).and_hms(0, 0, 0))?;
         assert_eq!(applications.len(), 1);
+
+        assert_eq!(applications[0].commands, vec!["cat"]);
 
         Ok(())
     }

@@ -195,6 +195,7 @@ dependencies = [
  "atoi",
  "chrono",
  "env_logger",
+ "log",
  "parse_duration",
  "regex",
  "serde",

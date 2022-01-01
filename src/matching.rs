@@ -181,8 +181,7 @@ impl Pattern {
 
                         if part.is_match(name.as_bytes()) {
                             if x.0.update(&part.captures(name.as_bytes()).unwrap()).is_err() {
-                                // todo better warning
-                                println!("inconsistent date");
+                                log::info!("inconsistent date for {:?}/{:?}, ignoring", x.1, name);
                                 continue;
                             }
                             x.1.push(name);
@@ -190,9 +189,8 @@ impl Pattern {
                         }
                     }
                 }
-                Err(_) => {
-                    // TOOD log more detailed warning
-                    println!("warning");
+                Err(err) => {
+                    log::info!("error during read_dir: {:?}, not matching", err);
                 }
             }
             out

@@ -34,41 +34,6 @@ pub fn from_path(file_path: &Path) -> Result<Config> {
     Ok(config)
 }
 
-fn glob_from_strptime_pattern(pattern: &str) -> String {
-    enum State {
-        Char,
-        Escape,
-    }
-    let mut state = State::Char;
-    let out: String = pattern
-        .chars()
-        .flat_map(|x| match state {
-            State::Char => match x {
-                '%' => {
-                    state = State::Escape;
-                    vec![]
-                }
-                _ => vec![x],
-            },
-            State::Escape => {
-                state = State::Char;
-                match x {
-                    '%' => vec!['%'],
-                    'Y' => "[0-9][0-9][0-9][0-9]".chars().collect(),
-                    'y' => "[0-9][0-9]".chars().collect(),
-                    'm' => "[0-9][0-9]".chars().collect(),
-                    'd' => "[0-9][0-9]".chars().collect(),
-                    'H' => "[0-9][0-9]".chars().collect(),
-                    'M' => "[0-9][0-9]".chars().collect(),
-                    'S' => "[0-9][0-9]".chars().collect(),
-                    default => todo!("Pattern {} not implemented", default),
-                }
-            }
-        })
-        .collect();
-    out
-}
-
 
 fn main() -> std::io::Result<()> {
     env_logger::init();

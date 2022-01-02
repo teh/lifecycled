@@ -67,9 +67,9 @@ fn regex_from_part(s: &[u8]) -> anyhow::Result<PatternPart> {
         }
     }
     if local.has_pattern {
-        Ok(PatternPart::Regex(regex::bytes::Regex::new(std::str::from_utf8(
-            &local.out,
-        )?)?))
+        Ok(PatternPart::Regex(regex::bytes::Regex::new(
+            &["^", std::str::from_utf8(&local.out)?, "$"].concat(),
+        )?))
     } else {
         Ok(PatternPart::Plain((std::str::from_utf8(&local.out)?).to_owned()))
     }
@@ -235,13 +235,17 @@ mod tests {
     #[test]
     fn test_matching() -> anyhow::Result<()> {
         let test = tempdir::TempDir::new("test")?;
+        // match
         std::fs::File::create(test.path().join("rotated.2021-12-24.log"))?;
-        std::fs::File::create(test.path().join("rotated.202x-12-24.log"))?;
         std::fs::File::create(test.path().join("rotated.2022-01-01.log"))?;
 
+        // don't match
+        std::fs::File::create(test.path().join("rotated.202x-12-24.log"))?;
+        std::fs::File::create(test.path().join("rotated.2022-01-01.log.something"))?;
+
         let p = super::Pattern::from_path(&test.path().join("*.%Y-%m-%d.log"))?;
-        let m = p.matches();
-        println!("{:#?}", m);
+        let m = p.matches()?;
+        assert_eq!(m.len(), 2);
 
         Ok(())
     }
@@ -255,8 +259,8 @@ mod tests {
         std::fs::File::create(test.path().join("2021/2022-12-24.log"))?;
 
         let p = super::Pattern::from_path(&test.path().join("%Y/%Y-%m-%d.log"))?;
-        let m = p.matches();
-        println!("{:#?}", m);
+        let m = p.matches()?;
+        assert_eq!(m.len(), 1);
 
         Ok(())
     }

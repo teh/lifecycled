@@ -10,6 +10,10 @@ struct Args {
     /// path to config file in TOML format
     #[argh(option)]
     config: std::path::PathBuf,
+
+    /// dry run  to see what would happen
+    #[argh(switch)]
+    dry_run: bool,
 }
 
 pub mod matching;
@@ -77,33 +81,57 @@ fn step(config: &Config, now: chrono::NaiveDateTime) -> anyhow::Result<Vec<RuleA
     Ok(out)
 }
 
+fn dry_run(config: &Config) {
+    let mut ts = chrono::Utc::now().naive_utc();
+    loop {
+        ts = ts.checked_add_signed(chrono::Duration::minutes(1)).unwrap();
+
+        match step(config, ts) {
+            Ok(applications) => {
+                log::debug!("Evaluation returned {} steps: {:?}", applications.len(), applications);
+                for x in applications {
+                    println!("[{:?}] Match {:?}, run {:?}", ts, x.path, x.commands);
+                }
+            }
+            Err(_) => todo!(),
+        }
+    }
+}
+
 fn main() {
     env_logger::init();
     let args: Args = argh::from_env();
     let config = from_path(&args.config).unwrap();
     log::debug!("Config: {:?}", config);
-    loop {
-        // evaluate once a minute, should be enough
-        match step(&config, chrono::Utc::now().naive_utc()) {
-            Ok(applications) => {
-                log::debug!("Evaluation returned {} steps: {:?}", applications.len(), applications);
-                for x in applications {
-                    for cmd in x.commands {
-                        match std::process::Command::new("bash")
-                            .env("LIFECYCLED_PATH", x.path.as_os_str())
-                            .arg("-c")
-                            .arg(&cmd)
-                            .spawn()
-                        {
-                            Ok(ref mut process) => {process.wait();},
-                            Err(err) => log::warn!("Command error {}: {:?}", cmd, err),
+
+    if args.dry_run {
+        dry_run(&config);
+    } else {
+        loop {
+            // evaluate once a minute, should be enough
+            match step(&config, chrono::Utc::now().naive_utc()) {
+                Ok(applications) => {
+                    log::debug!("Evaluation returned {} steps: {:?}", applications.len(), applications);
+                    for x in applications {
+                        for cmd in x.commands {
+                            match std::process::Command::new("bash")
+                                .env("LIFECYCLED_PATH", x.path.as_os_str())
+                                .arg("-c")
+                                .arg(&cmd)
+                                .spawn()
+                            {
+                                Ok(ref mut process) => {
+                                    process.wait();
+                                }
+                                Err(err) => log::warn!("Command error {}: {:?}", cmd, err),
+                            }
                         }
                     }
                 }
+                Err(err) => log::warn!("Evaluation error: {:?}", err),
             }
-            Err(err) => log::warn!("Evaluation error: {:?}", err),
+            std::thread::sleep(std::time::Duration::from_secs(60));
         }
-        std::thread::sleep(std::time::Duration::from_secs(60));
     }
 }
 
@@ -120,7 +148,7 @@ mod tests {
             rules: std::collections::BTreeMap::from_iter(vec![(
                 "test-rule".into(),
                 Rule {
-                    path_match: matching::Pattern::from_path(&test.path().join("*.%Y-%m-%d"))?,
+                    path_match: matching::Pattern::from_path(&test.path().join("*.%Y-%m-%d.log"))?,
                     after: chrono::Duration::days(1),
                     run: vec!["cat".to_owned()],
                 },

@@ -1,6 +1,7 @@
 use std::os::unix::prelude::OsStrExt;
 use std::path::PathBuf;
 
+
 #[derive(Debug)]
 enum PatternPart {
     Regex(regex::bytes::Regex),
@@ -15,7 +16,7 @@ pub struct Pattern {
 
 #[derive(Debug)]
 pub struct Match {
-    pub timestamp: chrono::NaiveDateTime,
+    pub timestamp: Option<chrono::NaiveDateTime>,
     pub path: PathBuf,
 }
 
@@ -214,7 +215,7 @@ impl Pattern {
         Ok(stack
             .into_iter()
             .map(|(ts, path)| Match {
-                timestamp: ts.as_datetime().unwrap(),
+                timestamp: ts.as_datetime().ok(),
                 path,
             })
             .collect())

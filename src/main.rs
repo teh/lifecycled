@@ -1,9 +1,5 @@
 use std::path::Path;
 
-use anyhow::Result;
-use argh::FromArgs;
-use serde::Deserialize;
-
 #[derive(argh::FromArgs)]
 /// lifecycled - life cycle daemon
 struct Args {
@@ -16,42 +12,8 @@ struct Args {
     dry_run: bool,
 }
 
+pub mod config;
 pub mod matching;
-
-#[derive(Debug, Deserialize)]
-struct Rule {
-    #[serde(rename = "match", deserialize_with = "deserialize_pattern")]
-    path_match: matching::Pattern,
-    #[serde(deserialize_with = "deserialize_duration")]
-    after: chrono::Duration,
-    run: Vec<String>,
-}
-
-fn deserialize_duration<'de, D>(d: D) -> Result<chrono::Duration, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    chrono::Duration::from_std(parse_duration::parse(&String::deserialize(d)?).map_err(serde::de::Error::custom)?)
-        .map_err(serde::de::Error::custom)
-}
-
-fn deserialize_pattern<'de, D>(d: D) -> Result<matching::Pattern, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    matching::Pattern::from_path(Path::new(&String::deserialize(d)?)).map_err(serde::de::Error::custom)
-}
-
-#[derive(Debug, Deserialize)]
-struct Config {
-    rules: std::collections::BTreeMap<String, Rule>,
-}
-
-fn from_path(file_path: &Path) -> Result<Config> {
-    let data = std::fs::read_to_string(file_path)?;
-    let config: Config = toml::from_str(&data)?;
-    Ok(config)
-}
 
 #[derive(Debug)]
 struct RuleApplication {
@@ -59,12 +21,38 @@ struct RuleApplication {
     commands: Vec<String>,
 }
 
+fn mtime(path: &Path) -> chrono::NaiveDateTime {
+    match std::fs::metadata(path) {
+        Ok(metadata) => chrono::DateTime::<chrono::Utc>::from(metadata.modified().unwrap()).naive_utc(),
+        Err(_) => chrono::naive::MAX_DATETIME,
+    }
+}
+
+fn ctime(path: &Path) -> chrono::NaiveDateTime {
+    match std::fs::metadata(path) {
+        Ok(metadata) => chrono::DateTime::<chrono::Utc>::from(metadata.created().unwrap()).naive_utc(),
+        Err(_) => chrono::naive::MAX_DATETIME,
+    }
+}
+
 // Filters down to the matches where the time condition applies.
-fn step(config: &Config, now: chrono::NaiveDateTime) -> anyhow::Result<Vec<RuleApplication>> {
+fn step(config: &config::Config, now: chrono::NaiveDateTime) -> anyhow::Result<Vec<RuleApplication>> {
     let mut out = vec![];
     for (name, rule) in &config.rules {
         for m in rule.path_match.matches()? {
-            if m.timestamp
+            let timestamp = match rule.time_source {
+                config::TimeSource::Auto if m.timestamp.is_none() => mtime(&m.path),
+                config::TimeSource::Auto if m.timestamp.is_some() => m.timestamp.unwrap(),
+                config::TimeSource::CTime => ctime(&m.path),
+                config::TimeSource::MTime => mtime(&m.path),
+                config::TimeSource::Filename if m.timestamp.is_some() => m.timestamp.unwrap(),
+                _ => {
+                    log::warn!("could not derive timestamp for {:?}", m.path);
+                    chrono::naive::MAX_DATETIME
+                }
+            };
+
+            if timestamp
                 .checked_add_signed(rule.after)
                 .ok_or_else(|| anyhow::Error::msg("time addition failed"))?
                 <= now
@@ -81,7 +69,7 @@ fn step(config: &Config, now: chrono::NaiveDateTime) -> anyhow::Result<Vec<RuleA
     Ok(out)
 }
 
-fn dry_run(config: &Config) {
+fn dry_run(config: &config::Config) {
     let mut ts = chrono::Utc::now().naive_utc();
     loop {
         ts = ts.checked_add_signed(chrono::Duration::minutes(1)).unwrap();
@@ -101,7 +89,7 @@ fn dry_run(config: &Config) {
 fn main() {
     env_logger::init();
     let args: Args = argh::from_env();
-    let config = from_path(&args.config).unwrap();
+    let config = config::from_path(&args.config).unwrap();
     log::debug!("Config: {:?}", config);
 
     if args.dry_run {
@@ -138,6 +126,8 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::*;
+
     #[test]
     fn test_step() -> anyhow::Result<()> {
         // let now = chrono::Utc::now().naive_utc();
@@ -151,6 +141,7 @@ mod tests {
                     path_match: matching::Pattern::from_path(&test.path().join("*.%Y-%m-%d.log"))?,
                     after: chrono::Duration::days(1),
                     run: vec!["cat".to_owned()],
+                    time_source: TimeSource::Auto,
                 },
             )]),
         };

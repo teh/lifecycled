@@ -28,7 +28,7 @@ fn mtime(path: &Path) -> chrono::NaiveDateTime {
     }
 }
 
-fn ctime(path: &Path) -> chrono::NaiveDateTime {
+fn btime(path: &Path) -> chrono::NaiveDateTime {
     match std::fs::metadata(path) {
         Ok(metadata) => chrono::DateTime::<chrono::Utc>::from(metadata.created().unwrap()).naive_utc(),
         Err(_) => chrono::naive::MAX_DATETIME,
@@ -43,7 +43,7 @@ fn step(config: &config::Config, now: chrono::NaiveDateTime) -> anyhow::Result<V
             let timestamp = match rule.time_source {
                 config::TimeSource::Auto if m.timestamp.is_none() => mtime(&m.path),
                 config::TimeSource::Auto if m.timestamp.is_some() => m.timestamp.unwrap(),
-                config::TimeSource::CTime => ctime(&m.path),
+                config::TimeSource::BTime => btime(&m.path),
                 config::TimeSource::MTime => mtime(&m.path),
                 config::TimeSource::Filename if m.timestamp.is_some() => m.timestamp.unwrap(),
                 _ => {
@@ -130,7 +130,6 @@ mod tests {
 
     #[test]
     fn test_step() -> anyhow::Result<()> {
-        // let now = chrono::Utc::now().naive_utc();
         let test = tempdir::TempDir::new("test")?;
         std::fs::File::create(test.path().join("rotated.2020-11-13.log"))?;
 
@@ -153,6 +152,48 @@ mod tests {
         assert_eq!(applications.len(), 1);
 
         assert_eq!(applications[0].commands, vec!["cat"]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_btime_mtime() -> anyhow::Result<()> {
+        //  btime can't be faked easily so we use now
+        let test = tempdir::TempDir::new("test")?;
+        std::fs::File::create(test.path().join("rotated.2020-11-13.log"))?;
+
+        let config = Config {
+            rules: std::collections::BTreeMap::from_iter(vec![
+                (
+                    "auto".into(),
+                    Rule {
+                        path_match: matching::Pattern::from_path(&test.path().join("*.log"))?,
+                        after: chrono::Duration::days(1),
+                        run: vec!["cat".to_owned()],
+                        time_source: TimeSource::Auto,
+                    },
+                ),
+                (
+                    "btime".into(),
+                    Rule {
+                        path_match: matching::Pattern::from_path(&test.path().join("*.log"))?,
+                        after: chrono::Duration::days(1),
+                        run: vec!["cat".to_owned()],
+                        time_source: TimeSource::BTime,
+                    },
+                ),
+            ]),
+        };
+
+        let future = chrono::Utc::now().naive_utc() + chrono::Duration::minutes(1);
+        let applications = step(&config, future)?;
+        assert_eq!(applications.len(), 0);
+
+        let past = chrono::Utc::now().naive_utc() + chrono::Duration::minutes(1);
+        let applications = step(&config, past)?;
+        // 1 file, 2 rule - we probably don't want to allow conflicts because both
+        // commands will try to execute? Needs some consideration.
+        assert_eq!(applications.len(), 2);
 
         Ok(())
     }

@@ -29,6 +29,6 @@ Commands in the `run` list are executed via bash, with the `LIFECYCLED_PATH` env
 
 * `--dry-run` mode which fast-forwards through time to simulate what would happen
 * forking with new effective user ID per rule to avoid runnig as root
-* ctime/mtime support
-* `duration` as a matching parameter so we can run e.g. `ctime + 7 days`
+* `after` as a matching parameter so we can run e.g. `ctime + 7 days` by specifying e.g. `*?expire=%D`
 * more fancy glob matching
+* possibly detect conflicts between rules - not sure how to best handle that

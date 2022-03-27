@@ -1,0 +1,9 @@
+[rules.stage1]
+match = "/tmp/lifecycled-test/*%Y-%d-%mT%H:%M:%S*.log"
+after = "60s"
+run = ["mv \"${LIFECYCLED_PATH}\" \"${LIFECYCLED_PATH}.moved\""]
+
+[rules.stage2]
+match = "/tmp/lifecycled-test/*.log.moved"
+after = "5m"
+run = []

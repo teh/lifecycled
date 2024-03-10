@@ -7,3 +7,9 @@ run = ["mv \"${LIFECYCLED_PATH}\" \"${LIFECYCLED_PATH}.moved\""]
 match = "/tmp/lifecycled-test/*.log.moved"
 after = "5m"
 run = []
+
+[rules.stage3]
+match = '/tmp/*.log'
+after = "1d"
+run = ["zstd  \"${LIFECYCLED_PATH}\" --rm -f"]
+time_source = "mtime"

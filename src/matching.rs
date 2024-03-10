@@ -188,7 +188,7 @@ impl Pattern {
                     }
                 }
                 Err(err) => {
-                    log::info!("error during read_dir: {:?}, not matching", err);
+                    log::info!("error during read_dir {:?}: {:?}, not matching", x.1, err);
                 }
             }
             out

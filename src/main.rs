@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{path::Path, io::Write};
 
 #[derive(argh::FromArgs)]
 /// lifecycled - life cycle daemon
@@ -79,6 +79,7 @@ fn dry_run(config: &config::Config) {
                 log::debug!("Evaluation returned {} steps: {:?}", applications.len(), applications);
                 for x in applications {
                     println!("[{:?}] Match {:?}, run {:?}", ts, x.path, x.commands);
+                    std::io::stdout().flush().unwrap();
                 }
             }
             Err(_) => todo!(),
